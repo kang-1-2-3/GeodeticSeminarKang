@@ -4,6 +4,7 @@ from torch import Tensor
 
 def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, epsilon: float = 1e-6):
     # Average of Dice coefficient for all batches, or for a single mask
+    target = target.squeeze(0)
     assert input.size() == target.size()
     assert input.dim() == 3 or not reduce_batch_first
 

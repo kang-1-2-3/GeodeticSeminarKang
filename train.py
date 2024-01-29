@@ -19,8 +19,8 @@ from unet import UNet
 from utils.data_loading import BasicDataset, CarvanaDataset
 from utils.dice_score import dice_loss
 
-dir_img = Path('./data/imgs/')
-dir_mask = Path('./data/masks/')
+dir_img = '/home/data/bbd1k_/*image.png'
+dir_mask = '/home/data/bbd1k_/*osm.png'
 dir_checkpoint = Path('./checkpoints/')
 
 
@@ -32,17 +32,17 @@ def train_model(
         learning_rate: float = 1e-5,
         val_percent: float = 0.1,
         save_checkpoint: bool = True,
-        img_scale: float = 0.5,
+        img_scale: float = 1,
         amp: bool = False,
         weight_decay: float = 1e-8,
         momentum: float = 0.999,
         gradient_clipping: float = 1.0,
 ):
     # 1. Create dataset
-    try:
-        dataset = CarvanaDataset(dir_img, dir_mask, img_scale)
-    except (AssertionError, RuntimeError, IndexError):
-        dataset = BasicDataset(dir_img, dir_mask, img_scale)
+    # try:
+    #     dataset = CarvanaDataset(dir_img, dir_mask, img_scale)
+    # except (AssertionError, RuntimeError, IndexError):
+    dataset = BasicDataset(dir_img, dir_mask, img_scale)
 
     # 2. Split into train / validation partitions
     n_val = int(len(dataset) * val_percent)
@@ -101,14 +101,14 @@ def train_model(
                     masks_pred = model(images)
                     if model.n_classes == 1:
                         loss = criterion(masks_pred.squeeze(1), true_masks.float())
-                        loss += dice_loss(F.sigmoid(masks_pred.squeeze(1)), true_masks.float(), multiclass=False)
-                    else:
-                        loss = criterion(masks_pred, true_masks)
-                        loss += dice_loss(
-                            F.softmax(masks_pred, dim=1).float(),
-                            F.one_hot(true_masks, model.n_classes).permute(0, 3, 1, 2).float(),
-                            multiclass=True
-                        )
+                        loss += dice_loss(torch.sigmoid(masks_pred.squeeze(1)), true_masks.float(), multiclass=False)
+                    # else:
+                    #     loss = criterion(masks_pred, true_masks)
+                    #     loss += dice_loss(
+                    #         F.softmax(masks_pred, dim=1).float(),
+                    #         F.one_hot(true_masks, model.n_classes).permute(0, 3, 1, 2).float(),
+                    #         multiclass=True
+                    #     )
 
                 optimizer.zero_grad(set_to_none=True)
                 grad_scaler.scale(loss).backward()
@@ -161,7 +161,7 @@ def train_model(
         if save_checkpoint:
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
             state_dict = model.state_dict()
-            state_dict['mask_values'] = dataset.mask_values
+            # state_dict['mask_values'] = dataset.mask_values
             torch.save(state_dict, str(dir_checkpoint / 'checkpoint_epoch{}.pth'.format(epoch)))
             logging.info(f'Checkpoint {epoch} saved!')
 
@@ -169,7 +169,7 @@ def train_model(
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
     parser.add_argument('--epochs', '-e', metavar='E', type=int, default=5, help='Number of epochs')
-    parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=1, help='Batch size')
+    parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=2, help='Batch size')
     parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-5,
                         help='Learning rate', dest='lr')
     parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
@@ -178,7 +178,7 @@ def get_args():
                         help='Percent of the data that is used as validation (0-100)')
     parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
-    parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
+    parser.add_argument('--classes', '-c', type=int, default=1, help='Number of classes')
 
     return parser.parse_args()
 
@@ -208,30 +208,30 @@ if __name__ == '__main__':
         logging.info(f'Model loaded from {args.load}')
 
     model.to(device=device)
-    try:
-        train_model(
-            model=model,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            learning_rate=args.lr,
-            device=device,
-            img_scale=args.scale,
-            val_percent=args.val / 100,
-            amp=args.amp
-        )
-    except torch.cuda.OutOfMemoryError:
-        logging.error('Detected OutOfMemoryError! '
-                      'Enabling checkpointing to reduce memory usage, but this slows down training. '
-                      'Consider enabling AMP (--amp) for fast and memory efficient training')
-        torch.cuda.empty_cache()
-        model.use_checkpointing()
-        train_model(
-            model=model,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            learning_rate=args.lr,
-            device=device,
-            img_scale=args.scale,
-            val_percent=args.val / 100,
-            amp=args.amp
-        )
+    # try:
+    train_model(
+        model=model,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.lr,
+        device=device,
+        img_scale=args.scale,
+        val_percent=args.val / 100,
+        amp=args.amp
+    )
+    # except torch.cuda.OutOfMemoryError:
+    #     logging.error('Detected OutOfMemoryError! '
+    #                   'Enabling checkpointing to reduce memory usage, but this slows down training. '
+    #                   'Consider enabling AMP (--amp) for fast and memory efficient training')
+    #     torch.cuda.empty_cache()
+    #     model.use_checkpointing()
+    #     train_model(
+    #         model=model,
+    #         epochs=args.epochs,
+    #         batch_size=args.batch_size,
+    #         learning_rate=args.lr,
+    #         device=device,
+    #         img_scale=args.scale,
+    #         val_percent=args.val / 100,
+    #         amp=args.amp
+    #     )
